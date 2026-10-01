@@ -19,6 +19,13 @@ jobs:
       - run: npm run check
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser
+      - name: Retain verified demo screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-demo-screenshots
+          path: test-results/**/demo-results.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Print failure contexts
         if: failure()
         run: find test-results -name error-context.md -print -exec cat {} \;
