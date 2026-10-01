@@ -89,7 +89,7 @@ Target current Chrome, Edge, Firefox and Safari with Canvas JPEG, `createImageBi
 
 - The included Node tests cover byte units, bounds, integer dimensions, no upscaling, minimum constraints, quality grid, cancellation checks, EXIF parsing/transforms, metadata stripping, hostile headers, safe names, ZIP integrity and local-only static code.
 - The Playwright suite covers Chromium, Firefox and WebKit, including actual JPEG encodes, all eight EXIF pixel orientations, downloads/ZIP contents, failure cases, cancellation and repeated jobs, Chinese/mobile layout, and absence of external requests.
-- GitHub Actions runs 29 Node tests and 30 Playwright cases (10 each in Chromium, Firefox and WebKit). See the linked CI run for the result on a specific commit; this is engine-level automated coverage, not certification of every browser version or physical mobile device.
+- GitHub Actions runs 29 Node tests and 33 Playwright cases (11 each in Chromium, Firefox and WebKit), including the narrow-screen repository-link check. See the linked CI run for the result on a specific commit; this is engine-level automated coverage, not certification of every browser version or physical mobile device.
 - Initial CI caught Firefox rejecting a multipart JPEG Blob after APP1 removal. The decoder now assembles one contiguous buffer, preserving the non-APP1 bytes exactly. A browser regression checks the sanitized Blob, all eight orientations, exported pixels and actual downloaded bytes.
 - The implementation environment allowed unit/build checks but blocked local browser execution and localhost browsing. Browser execution is performed in CI; a passing Pages deployment requires those tests to pass.
 
