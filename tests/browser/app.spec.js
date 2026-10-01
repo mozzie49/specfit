@@ -88,3 +88,13 @@ test('minimum dimensions are evaluated after EXIF orientation',async({page})=>{
   await expect(page.locator('.result-card')).toContainText('80 × 120 px');await expect(page.locator('.reason')).toContainText('Source is below');await expect(page.locator('#zip')).toBeDisabled();
   const report=JSON.parse(await downloadBytes(page,'#report'));expect(report.files[0].sourceDimensions).toEqual({width:80,height:120});expect(report.files[0].reason).toBe('sourceSmall');expect(report.files[0].output).toBeNull();
 });
+
+test('source link is visible and mobile header stays within viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/');
+  const source = page.getByRole('link', { name: 'SpecFit on GitHub', exact: true });
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute('href', 'https://github.com/mozzie49/specfit');
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(await page.locator('.top').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+});
