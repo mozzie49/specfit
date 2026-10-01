@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="description" content="Fit a batch of JPEG images to explicit byte and minimum pixel limits, privately in your browser.">
+<link rel="icon" href="./public/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./src/style.css">
+<title>SpecFit · JPEGs that meet the brief</title>
+</head>
+<body>
+<div class="shell">
+<header class="top"><a class="brand" href="./" aria-label="SpecFit home"><span class="mark">S<span>f</span></span> SpecFit</a><div class="top-right"><span class="local" data-i18n="local">● Entirely on your device</span><button id="language" class="text-button" type="button" aria-label="Switch to Chinese">中文</button></div></header>
+<main>
+<section class="intro"><p class="eyebrow" data-i18n="eyebrow">SMALL FILES. CLEAR RULES.</p><h1 data-i18n="headline">Meet the limit.<br>Keep the pixels.</h1><p class="lede" data-i18n="lede">A batch JPEG exporter for upload forms with a maximum file size and minimum image dimensions. If the rules don’t fit, you’ll know.</p></section>
+<div class="workspace">
+<section class="settings panel" aria-labelledby="settings-heading"><div class="section-head"><span class="step">01</span><h2 id="settings-heading" data-i18n="rules">Set the rules</h2></div>
+<form id="settings-form">
+<label for="amount" data-i18n="maxSize">Maximum size per JPEG</label><div class="input-pair"><input id="amount" type="number" min="0.001" max="20971.52" step="any" value="300" required><select id="unit" aria-label="Byte unit"><option value="kB">kB (1,000 bytes)</option><option value="KiB">KiB (1,024 bytes)</option></select></div><p id="byte-total" class="hint"></p>
+<fieldset><legend data-i18n="minimum">Minimum dimensions</legend><div class="input-pair"><div><label class="small-label" for="min-width" data-i18n="width">Width · px</label><input id="min-width" type="number" min="1" max="16384" step="1" value="800" required></div><div><label class="small-label" for="min-height" data-i18n="height">Height · px</label><input id="min-height" type="number" min="1" max="16384" step="1" value="600" required></div></div></fieldset>
+<label for="target-width" data-i18n="target">Maximum output width · px</label><input id="target-width" type="number" min="1" max="16384" step="1" placeholder="Original width"><p class="hint" data-i18n="aspect">Optional. Keeps aspect ratio. Never upscales or shrinks below your minimums.</p>
+<label for="floor" data-i18n="quality">Quality floor</label><div class="range-row"><input id="floor" type="range" min="0.05" max="1" step="0.05" value="0.5"><output id="floor-value" for="floor">0.50</output></div><p class="hint" data-i18n="qualityHelp">Tests 1.00 → floor in 0.05 steps. Chooses the highest tested quality that fits; quality is a browser encoder setting.</p>
+<button id="run" class="primary" type="submit" disabled data-i18n="run">Check & export</button><button id="cancel" class="secondary" type="button" hidden data-i18n="cancel">Cancel batch</button>
+</form></section>
+<section class="files panel" aria-labelledby="files-heading"><div class="section-head"><span class="step">02</span><h2 id="files-heading" data-i18n="files">Add your JPEGs</h2><button id="clear" type="button" class="text-button" data-i18n="clear" disabled>Clear</button></div>
+<div id="dropzone" class="dropzone"><div class="file-icon" aria-hidden="true">↗</div><h3 data-i18n="drop">Drop the whole batch here</h3><p data-i18n="dropHelp">JPEG only. No uploads, accounts, or tracking.</p><label for="file-input" class="file-button" data-i18n="choose">Choose JPEGs</label><input id="file-input" type="file" accept="image/jpeg,.jpg,.jpeg" multiple><button id="demo" class="text-button" type="button" data-i18n="demo">Try 3 synthetic examples ↗</button></div>
+<p class="limits" data-i18n="limits">Up to 20 files · 20 MiB each · 80 MiB per batch<br>16 megapixels per image · 48 megapixels per batch</p>
+<p id="selection" class="selection" aria-live="polite"></p><ul id="queue" class="queue"></ul>
+<div class="note"><strong data-i18n="honestTitle">Your requirements stay in charge</strong><p data-i18n="honest">We don’t keep shrinking until something passes. Dimensions are fixed before testing quality. Some images simply won’t fit these rules.</p></div></section>
+</div>
+<section id="results-section" class="results" hidden><div class="results-heading"><div><p class="eyebrow" data-i18n="review">03 / REVIEW THE OUTPUT</p><h2 data-i18n="results">Every file, accounted for.</h2></div><div class="actions"><button id="report" class="secondary" type="button" data-i18n="report" disabled>Save report</button><button id="zip" class="primary" type="button" data-i18n="zip" disabled>Download passing ZIP</button></div></div><p id="status" role="status" aria-live="polite"></p><p id="result-spec" class="hint"></p><div id="results-grid" class="results-grid"></div><p class="hint" data-i18n="reportHelp">ZIP contains only passing JPEGs plus report.json. Reports include every result and all quality tests. Report filenames may contain personal information; review before sharing.</p></section>
+<p id="error" class="error" role="alert" hidden></p>
+<section class="footnotes"><p><strong data-i18n="privacy">Private by design.</strong> <span data-i18n="privacyBody">Your images stay in this tab. EXIF orientation is applied; original EXIF/GPS, IPTC, XMP and color profiles are not copied to exports. Re-encoding may change color and always loses some image information.</span></p><p data-i18n="testing">Browser encoders vary. “Does not fit” means no tested quality met this specification, not that no other encoder could. Verify exports before submitting them.</p></section>
+</main><footer><span>SpecFit <span class="version">0.1</span></span><span data-i18n="footer">One small tool. One less upload error.</span><a href="./README.md">README / MIT</a></footer>
+</div>
+<dialog id="preview"><div class="preview-head"><h2 id="preview-title"></h2><button id="close-preview" class="secondary" type="button" data-i18n="close">Close</button></div><div class="compare"><figure><figcaption data-i18n="before">Before · scaled preview</figcaption><img id="before-image" alt="Original image scaled preview"></figure><figure><figcaption data-i18n="after">After · scaled preview</figcaption><img id="after-image" alt="Exported image scaled preview"></figure></div><p class="hint" data-i18n="previewHelp">Scaled previews are for composition only. Download the JPEG to inspect full-resolution detail.</p></dialog>
+<script type="module" src="./src/app.js"></script>
+</body></html>
