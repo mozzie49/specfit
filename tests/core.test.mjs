@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { LIMITS, parseSettings, dimensions, qualitySteps, findFittingEncode, safeName, checkFiles, inspectJpeg, decodeBlob, orientationMatrix, makeReport } from '../src/core.js';
+const raw = { amount:300, unit:'kB', minWidth:800, minHeight:600, targetWidth:'', floor:.5 };
+const spec = parseSettings(raw);
+function expectCode(fn, code) { assert.throws(fn, error => error.code === code); }
+function segment(marker, payload) { return [255, marker, (payload.length+2)>>8, (payload.length+2)&255, ...payload]; }
+function header(w, h, app = [], marker = 0xc0) { return Uint8Array.from([255,216,...app,...segment(marker,[8,h>>8,h&255,w>>8,w&255,3,1,17,0,2,17,1,3,17,1]),255,218,0,2,255,217]).buffer; }
+function exif(orientation, little = true) {
+  const b = new Uint8Array(32), v = new DataView(b.buffer); b.set([69,120,105,102,0,0]);
+  v.setUint16(6,little ? 0x4949 : 0x4d4d); v.setUint16(8,42,little); v.setUint32(10,8,little); v.setUint16(14,1,little);
+  v.setUint16(16,0x112,little); v.setUint16(18,3,little); v.setUint32(20,1,little); v.setUint16(24,orientation,little);
+  return segment(0xe1,[...b]);
+}
+test('explicit decimal kB and binary KiB; fractions round down', () => { assert.equal(spec.maxBytes,300000); assert.equal(parseSettings({...raw,unit:'KiB'}).maxBytes,307200); assert.equal(parseSettings({...raw,amount:.0019}).maxBytes,1); });
+test('reject invalid constraints and over-budget cap', () => {
+  for (const change of [{amount:0},{amount:Infinity},{unit:'KB'},{minWidth:0},{minHeight:1.3},{targetWidth:'0'},{targetWidth:20000},{floor:0},{floor:1.1},{amount:30000}]) expectCode(()=>parseSettings({...raw,...change}),'settings');
+});
+test('preserve dimensions by default',()=>assert.deepEqual(dimensions(1600,1200,spec),{width:1600,height:1200}));
+test('no upscaling even when requested width is larger',()=>assert.deepEqual(dimensions(1000,750,{...spec,targetWidth:2000}),{width:1000,height:750}));
+test('aspect ratio with integer rounding',()=>assert.deepEqual(dimensions(1600,1067,{...spec,targetWidth:1000}),{width:1000,height:667}));
+test('too-small source is impossible without upscaling',()=>expectCode(()=>dimensions(799,600,spec),'sourceSmall'));
+test('target cannot silently cross either minimum',()=>{ expectCode(()=>dimensions(1600,900,{...spec,targetWidth:800}),'targetSmall'); expectCode(()=>dimensions(1600,1200,{...spec,targetWidth:799}),'targetSmall'); });
+test('quality grid descends and includes an irregular exact floor',()=>{ assert.deepEqual(qualitySteps(.87),[1,.95,.9,.87]); assert.deepEqual(qualitySteps(1),[1]); assert.equal(qualitySteps(.05).length,20); });
+test('picks highest TESTED fit without assuming monotonic sizes',async()=>{ const values = new Map([[1,150],[.95,101],[.9,99],[.85,130]]); const fit = await findFittingEncode(q=>Promise.resolve(new Blob([new Uint8Array(values.get(q))],{type:'image/jpeg'})),100,.85); assert.equal(fit.quality,.9); assert.equal(fit.blob.size,99); assert.equal(fit.attempts.length,3); });
+test('byte boundary is inclusive',async()=>{ const fit = await findFittingEncode(async()=>new Blob([new Uint8Array(100)],{type:'image/jpeg'}),100,.5); assert.equal(fit.quality,1); });
+test('no-fit preserves test evidence and never lowers quality floor',async()=>{ const seen=[]; const fit=await findFittingEncode(async q=>{ seen.push(q); return new Blob([new Uint8Array(101)],{type:'image/jpeg'}); },100,.91); assert.equal(fit.blob,null); assert.deepEqual(seen,[1,.95,.91]); assert.equal(fit.attempts.length,3); });
+test('reject unexpected encoder output type',async()=>{ await assert.rejects(findFittingEncode(async()=>new Blob(['png'],{type:'image/png'}),100,.5),e=>e.code==='encode'); });
+test('abort before and after asynchronous encode',async()=>{ let n=0; const check=()=>{if(++n===2)throw new DOMException('Cancelled','AbortError');}; await assert.rejects(findFittingEncode(async()=>new Blob(['ok'],{type:'image/jpeg'}),100,.5,check),e=>e.name==='AbortError'); });
+test('names avoid traversal, separators, controls, device names and case collisions',()=>{ const used=new Set(); for(const name of ['../a.jpg','a.jpg','A.JPG','CON.jpg','中文.jpg','中文.jpg']) { const n=safeName(name,used); assert.ok(!/[\\/\x00-\x1f]/.test(n)); assert.ok(n.endsWith('.jpg')); } assert.equal(used.size,6); assert.equal(safeName('CON.jpg',new Set()),'_CON.jpg'); assert.equal(safeName('a.jpg',new Set(['a.jpg','a-2.jpg'])),'a-3.jpg'); });
+test('selection limits reject excess files and bytes',()=>{ expectCode(()=>checkFiles([]),'fileCount'); expectCode(()=>checkFiles(Array(21).fill({size:1})),'fileCount'); expectCode(()=>checkFiles([{size:LIMITS.fileBytes+1}]),'fileSize'); expectCode(()=>checkFiles(Array(5).fill({size:LIMITS.fileBytes})),'batchSize'); checkFiles([{size:LIMITS.fileBytes}]); });
+test('valid baseline and progressive dimension headers',()=>{ assert.equal(inspectJpeg(header(1200,900)).width,1200); assert.equal(inspectJpeg(header(1200,900,[],0xc2)).height,900); });
+test('EXIF orientations 1–8 in both endiannesses',()=>{ for(const little of [true,false])for(let o=1;o<=8;o++){ const info=inspectJpeg(header(1200,900,exif(o,little))); assert.equal(info.orientation,o); assert.equal(info.width,o>=5?900:1200); assert.equal(info.height,o>=5?1200:900); } });
+test('APP1 removed before decoding; image bytes otherwise preserved',async()=>{ const original=header(1200,900,exif(6)); const info=inspectJpeg(original); const stripped=await decodeBlob(original,info).arrayBuffer(); assert.deepEqual(new Uint8Array(stripped),new Uint8Array(header(1200,900))); assert.equal(inspectJpeg(stripped).orientation,1); });
+test('all orientation transforms map corners into expected bounds',()=>{ for(let o=1;o<=8;o++){ const [a,b,c,d,e,f]=orientationMatrix(o,100,60); const points=[[0,0],[100,0],[0,60],[100,60]].map(([x,y])=>[a*x+c*y+e,b*x+d*y+f]); assert.equal(Math.min(...points.map(p=>p[0])),0); assert.equal(Math.min(...points.map(p=>p[1])),0); assert.equal(Math.max(...points.map(p=>p[0])),o>=5?60:100); assert.equal(Math.max(...points.map(p=>p[1])),o>=5?100:60); } });
+test('malformed, truncated, non-JPEG and oversized headers rejected',()=>{ for(const b of [new ArrayBuffer(0),new Uint8Array([255,216,255]).buffer,new Uint8Array([137,80,78,71]).buffer,new Uint8Array([255,216,255,225,255,255]).buffer]) expectCode(()=>inspectJpeg(b),'jpeg'); expectCode(()=>inspectJpeg(header(5000,5000)),'pixels'); expectCode(()=>inspectJpeg(header(0,20)),'pixels'); expectCode(()=>inspectJpeg(header(20000,1)),'pixels'); expectCode(()=>inspectJpeg(header(800,600,exif(9))),'jpeg'); });
+test('duplicate EXIF and hostile directory offsets rejected',()=>{ expectCode(()=>inspectJpeg(header(800,600,[...exif(1),...exif(6)])),'jpeg'); const data=exif(1); data.splice(14,4,255,255,255,255); expectCode(()=>inspectJpeg(header(800,600,data)),'jpeg'); });
+test('report includes all failures, exact output sizes and tested qualities; no blobs',()=>{ const blob=new Blob(['bytes'],{type:'image/jpeg'}); const report=makeReport(spec,[{file:{name:'x.jpg',size:100},info:{width:1000,height:750,outputWidth:800,outputHeight:600},output:blob,name:'x.jpg',status:'passed',quality:.8,attempts:[{quality:.8,bytes:5}]},{file:{name:'bad.jpg',size:1},status:'rejected',code:'jpeg'}]); assert.equal(report.files[0].output.bytes,5); assert.equal(report.files[1].reason,'jpeg'); assert.ok(!JSON.stringify(report).includes('"blob"')); });
+test('constraint property sweep never upscales or violates minimums',()=>{ for(let width=1;width<=3000;width+=43)for(let height=1;height<=2000;height+=127){ const s={...spec,minWidth:10,minHeight:10,targetWidth:777}; try { const out=dimensions(width,height,s); assert.ok(out.width<=width && out.height<=height); assert.ok(out.width>=10 && out.height>=10); assert.ok(out.width<=777); assert.ok(Math.abs(out.height-height*out.width/width)<=.5); }catch(e){assert.ok(['sourceSmall','targetSmall'].includes(e.code));} } });
+
+test('Windows device names remain reserved before additional extensions',()=>{ for(const name of ['CON.notes.jpg','aux.backup.jpeg','LPT1.2026.jpg','COM¹.scan.jpg']) assert.ok(safeName(name,new Set()).startsWith('_')); assert.equal(safeName('context.notes.jpg',new Set()),'context.notes.jpg'); });
