@@ -6,6 +6,12 @@ SpecFit is a small, original, browser-only JPEG batch exporter. Set a maximum fi
 
 This is a convenience-focused open-source experiment, not a new compression algorithm. Existing tools such as ImgTweak, Pixsoma and IrfanView cover related needs. SpecFit narrows the workflow to an explicit byte-and-pixel contract and makes failures visible.
 
+## Try the alpha
+
+[Open the live demo](https://mozzie49.github.io/specfit/) · [CI results](https://github.com/mozzie49/specfit/actions/workflows/ci.yml)
+
+Use the built-in synthetic examples to try it without choosing personal files. This is an early experiment; inspect exports before using them for a real submission and keep your originals.
+
 ## Try locally
 
 Requires Node.js 22 or newer for the development commands. The app itself uses only browser APIs and local static files.
@@ -26,7 +32,7 @@ npx playwright install --with-deps chromium firefox webkit
 npm run test:browser
 ```
 
-The included GitHub Actions workflow runs the checks and browser tests. There is no deployment workflow. To host it yourself, serve the contents of `dist/` from any static host. No backend, server secret, model, database, telemetry, CDN, web fonts, or remote runtime dependency is used. Opening `index.html` directly as a `file:` URL is not supported because the app uses ES modules.
+The included GitHub Actions workflow runs the checks and browser tests. A deployment job publishes `dist/` to GitHub Pages only after the same commit passes all checks; pull requests do not deploy. To host it yourself, serve the contents of `dist/` from any static host. No backend, server secret, model, database, telemetry, CDN, web fonts, or remote runtime dependency is used. Opening `index.html` directly as a `file:` URL is not supported because the app uses ES modules.
 
 ## The contract
 
@@ -69,7 +75,9 @@ Target current Chrome, Edge, Firefox and Safari with Canvas JPEG, `createImageBi
 
 - The included Node tests cover byte units, bounds, integer dimensions, no upscaling, minimum constraints, quality grid, cancellation checks, EXIF parsing/transforms, metadata stripping, hostile headers, safe names, ZIP integrity and local-only static code.
 - The Playwright suite covers Chromium, Firefox and WebKit, including actual JPEG encodes, all eight EXIF pixel orientations, downloads/ZIP contents, failure cases, cancellation and repeated jobs, Chinese/mobile layout, and absence of external requests.
-- The initial implementation environment allowed unit/build checks but blocked local browser execution and localhost browsing. Browser tests were authored for CI but were not executed there. Do not interpret the presence of those tests as a recorded browser pass. Run them before publishing or relying on this experiment.
+- GitHub Actions runs 29 Node tests and 30 Playwright cases (10 each in Chromium, Firefox and WebKit). See the linked CI run for the result on a specific commit; this is engine-level automated coverage, not certification of every browser version or physical mobile device.
+- Initial CI caught Firefox rejecting a multipart JPEG Blob after APP1 removal. The decoder now assembles one contiguous buffer, preserving the non-APP1 bytes exactly. A browser regression checks the sanitized Blob, all eight orientations, exported pixels and actual downloaded bytes.
+- The implementation environment allowed unit/build checks but blocked local browser execution and localhost browsing. Browser execution is performed in CI; a passing Pages deployment requires those tests to pass.
 
 ## Why this exists
 
