@@ -1,5 +1,8 @@
-name: Checks
+name: Checks and Pages
 on: [push, pull_request]
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -16,9 +19,36 @@ jobs:
       - run: npm run check
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser
+      - name: Print failure contexts
+        if: failure()
+        run: find test-results -name error-context.md -print -exec cat {} \;
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: browser-test-report
           path: playwright-report/
           retention-days: 7
+      - name: Upload verified static site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy verified site
+        id: deployment
+        uses: actions/deploy-pages@v4
