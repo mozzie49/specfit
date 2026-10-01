@@ -113,11 +113,19 @@ export function inspectJpeg(buffer) {
   throw new SpecError('jpeg');
 }
 export function decodeBlob(buffer, info) {
-  const bytes = new Uint8Array(buffer), parts = [];
-  let start = 0;
-  for (const [a, b] of info.remove) { parts.push(bytes.subarray(start, a)); start = b; }
-  parts.push(bytes.subarray(start));
-  return new Blob(parts, { type: 'image/jpeg' });
+  const bytes = new Uint8Array(buffer);
+  if (!info.remove.length) return new Blob([bytes], { type: 'image/jpeg' });
+  // Firefox can reject JPEGs stored as multipart Blobs. Preserve the exact
+  // non-APP1 bytes in one bounded buffer before handing them to the decoder.
+  const removedBytes = info.remove.reduce((sum, [a, b]) => sum + b - a, 0);
+  const contiguous = new Uint8Array(bytes.length - removedBytes);
+  let start = 0, offset = 0;
+  for (const [a, b] of info.remove) {
+    contiguous.set(bytes.subarray(start, a), offset);
+    offset += a - start; start = b;
+  }
+  contiguous.set(bytes.subarray(start), offset);
+  return new Blob([contiguous], { type: 'image/jpeg' });
 }
 export function orientationMatrix(orientation, width, height) {
   return [null, [1,0,0,1,0,0], [-1,0,0,1,width,0], [-1,0,0,-1,width,height], [1,0,0,-1,0,height], [0,1,1,0,0,0], [0,1,-1,0,height,0], [0,-1,-1,0,height,width], [0,-1,1,0,0,width]][orientation];
