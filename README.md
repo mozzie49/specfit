@@ -12,6 +12,20 @@ This is a convenience-focused open-source experiment, not a new compression algo
 
 Use the built-in synthetic examples to try it without choosing personal files. This is an early experiment; inspect exports before using them for a real submission and keep your originals.
 
+## Three examples, three clear outcomes
+
+![SpecFit completed synthetic demo: one image passes the byte and pixel limits, one fails the tested byte limit, and one is too small](./docs/specfit-demo.png)
+
+Unedited Chromium screenshot from [passing CI run 36854979586](https://github.com/mozzie49/specfit/actions/runs/36854979586), using [commit f3547b3](https://github.com/mozzie49/specfit/commit/f3547b32ba94dfea3e02808d0c3f22324d163499) and the app's built-in synthetic examples. The screenshot is captured after the test downloads the real ZIP and verifies its JPEG bytes, decoded dimensions, and report. That run passed all 29 Node tests and 30 browser cases.
+
+With a **300,000-byte cap**, **800 × 600 minimum**, and **0.50 quality floor**:
+
+- **Smooth image: passes.** The export meets both limits at its original 1200 × 900 dimensions.
+- **Noise image: does not fit.** None of the 11 tested quality settings meets the cap at those dimensions; the app does not silently shrink it.
+- **Undersized image: does not fit.** The 480 × 320 source cannot satisfy the minimum without upscaling.
+
+These examples demonstrate the workflow, not compression superiority. A passing export can be larger than its source; encoded sizes vary by browser. “Does not fit” describes the tested settings, not every possible JPEG encoder. To reproduce, open the demo, choose **Try 3 synthetic examples**, then **Check & export**.
+
 ## Try locally
 
 Requires Node.js 22 or newer for the development commands. The app itself uses only browser APIs and local static files.
