@@ -1,4 +1,11 @@
 import { test, expect } from '@playwright/test';
+test.beforeEach(async ({page}) => {
+  page.on('console', message => { if (['warning','error'].includes(message.type())) console.log(`[browser ${message.type()}] ${message.text()}`); });
+  page.on('pageerror', error => console.log(`[page error] ${error.message}`));
+});
+test.afterEach(async ({page}, info) => {
+  if (info.status !== info.expectedStatus && !page.isClosed()) console.log('Failure UI:', await page.locator('body').innerText());
+});
 async function demo(page) { await page.goto('/'); await page.locator('#demo').click(); await expect(page.locator('#run')).toBeEnabled(); await expect(page.locator('#queue li')).toHaveCount(3); }
 async function run(page) { await page.locator('#run').click(); await expect(page.locator('#status')).toContainText('Finished', { timeout:60000 }); }
 async function downloadBytes(page, selector) { const [download] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]); const stream = await download.createReadStream(); const chunks=[]; for await(const chunk of stream)chunks.push(chunk); return Buffer.concat(chunks); }
@@ -35,7 +42,21 @@ test('all eight EXIF orientations transform pixels once and remove original meta
   const expectedTopLeft = {1:[255,0,0],2:[0,255,0],3:[255,255,0],4:[0,0,255],5:[255,0,0],6:[0,0,255],7:[255,255,0],8:[0,255,0]};
   await page.goto('/');await permissive(page);
   for(let orientation=1;orientation<=8;orientation++) {
-    const buffer=await jpeg(page,120,80,orientation);await page.locator('#file-input').setInputFiles({name:`orientation-${orientation}.jpg`,mimeType:'image/jpeg',buffer});await run(page);
+    const buffer=await jpeg(page,120,80,orientation);
+    if (orientation === 1) console.log('Decode diagnostics:', await page.evaluate(async data => {
+      const {inspectJpeg,decodeBlob}=await import('/src/core.js');
+      const buffer=new Uint8Array(data).buffer, info=inspectJpeg(buffer), segmented=decodeBlob(buffer,info);
+      const contiguous=new Blob([await segmented.arrayBuffer()],{type:'image/jpeg'});
+      const outcomes={};
+      for (const [name,blob] of Object.entries({original:new Blob([buffer],{type:'image/jpeg'}),segmented,contiguous})) {
+        try {const image=await createImageBitmap(blob);outcomes[name]={width:image.width,height:image.height};image.close();}
+        catch(error){outcomes[name]={error:error.name,message:error.message};}
+      }
+      return outcomes;
+    },[...buffer]));
+    await page.locator('#file-input').setInputFiles({name:`orientation-${orientation}.jpg`,mimeType:'image/jpeg',buffer});await run(page);
+    await expect(page.locator('[data-status=passed]')).toHaveCount(1);
+    await expect(page.locator('.card-actions button:last-child')).toBeEnabled();
     const output=await downloadBytes(page,'.card-actions button:last-child');expect(output.includes(Buffer.from('Exif\0\0'))).toBe(false);
     const result=await page.evaluate(async data=>{const image=await createImageBitmap(new Blob([new Uint8Array(data)],{type:'image/jpeg'}));const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);const pixel=[...ctx.getImageData(10,10,1,1).data].slice(0,3);const size=[image.width,image.height];image.close();return {pixel,size};},[...output]);
     expect(result.size).toEqual(orientation>=5?[80,120]:[120,80]);for(let channel=0;channel<3;channel++)expect(Math.abs(result.pixel[channel]-expectedTopLeft[orientation][channel])).toBeLessThan(30);
@@ -44,6 +65,7 @@ test('all eight EXIF orientations transform pixels once and remove original meta
 test('duplicate and unsafe filenames remain plain text and ZIP names unique',async({page})=>{
   await page.goto('/');await permissive(page);const buffer=await jpeg(page);
   await page.locator('#file-input').setInputFiles([{name:'same.jpg',mimeType:'image/jpeg',buffer},{name:'SAME.JPG',mimeType:'image/jpeg',buffer},{name:'<svg onload=alert(1)>.jpg',mimeType:'image/jpeg',buffer}]);await run(page);
+  await expect(page.locator('[data-status=passed]')).toHaveCount(3);await expect(page.locator('#zip')).toBeEnabled();
   const entries=zipEntries(await downloadBytes(page,'#zip'));expect(new Set(entries.map(e=>e.name.toLowerCase())).size).toBe(4);expect(entries[1].name).toBe('SAME-2.jpg');expect(entries[2].name).not.toContain('<');expect(await page.locator('.result-card svg').count()).toBe(0);
 });
 test('cancel drains current work; repeated submit and next job cannot revive stale output',async({page})=>{
