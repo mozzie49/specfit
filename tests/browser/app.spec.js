@@ -43,17 +43,15 @@ test('all eight EXIF orientations transform pixels once and remove original meta
   await page.goto('/');await permissive(page);
   for(let orientation=1;orientation<=8;orientation++) {
     const buffer=await jpeg(page,120,80,orientation);
-    if (orientation === 1) console.log('Decode diagnostics:', await page.evaluate(async data => {
+    // Regression: Firefox rejects segmented JPEG Blobs after APP1 removal.
+    // Decode the actual production Blob before checking the exported pixels.
+    const strippedSize=await page.evaluate(async data => {
       const {inspectJpeg,decodeBlob}=await import('/src/core.js');
-      const buffer=new Uint8Array(data).buffer, info=inspectJpeg(buffer), segmented=decodeBlob(buffer,info);
-      const contiguous=new Blob([await segmented.arrayBuffer()],{type:'image/jpeg'});
-      const outcomes={};
-      for (const [name,blob] of Object.entries({original:new Blob([buffer],{type:'image/jpeg'}),segmented,contiguous})) {
-        try {const image=await createImageBitmap(blob);outcomes[name]={width:image.width,height:image.height};image.close();}
-        catch(error){outcomes[name]={error:error.name,message:error.message};}
-      }
-      return outcomes;
-    },[...buffer]));
+      const buffer=new Uint8Array(data).buffer;
+      const image=await createImageBitmap(decodeBlob(buffer,inspectJpeg(buffer)));
+      const size={width:image.width,height:image.height};image.close();return size;
+    },[...buffer]);
+    expect(strippedSize).toEqual({width:120,height:80});
     await page.locator('#file-input').setInputFiles({name:`orientation-${orientation}.jpg`,mimeType:'image/jpeg',buffer});await run(page);
     await expect(page.locator('[data-status=passed]')).toHaveCount(1);
     await expect(page.locator('.card-actions button:last-child')).toBeEnabled();
